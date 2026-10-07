@@ -1,0 +1,233 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;width:1400px;height:1050px;overflow:hidden;
+    background:radial-gradient(ellipse at 50% 40%,#1c2433 0%,#0b0f17 70%);font-family:"DejaVu Sans",Arial,sans-serif}
+  #wrap{position:relative;width:1400px;height:1050px}
+  canvas{position:absolute;inset:0}
+  svg{position:absolute;inset:0}
+  .t{fill:#e6edf3;font-size:15px;font-weight:600}
+  .s{fill:#9fb0c3;font-size:12.5px}
+  .h1{fill:#fff;font-size:30px;font-weight:700}
+  .h2{fill:#7aa2d6;font-size:15px}
+</style></head>
+<!-- Source for images/24-rack-3d-render.jpg. Open in a browser to view the 3D rack.
+     Layout follows hardware/inventory.md (top to bottom). Change a device here, then
+     screenshot at 1400x1050 to update the render. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<body><div id="wrap"><canvas id="c" width="1400" height="1050"></canvas><svg id="o" width="1400" height="1050"></svg></div>
+<script>
+const W=1400,H=1050;
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true,alpha:true});
+renderer.setSize(W,H,false);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(28,W/H,1,3000);
+camera.position.set(128,112,248); camera.lookAt(-1,51,0);
+
+// ---------- helpers ----------
+function tex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');draw(g,w,h);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;return t;}
+const M=(o)=>new THREE.MeshStandardMaterial(o);
+function box(w,h,d,mat,x,y,z,front){
+  if(front&&front.isTexture)front=M({map:front,roughness:0.5,metalness:0.15});
+  const mats=Array.isArray(mat)?mat:[mat,mat,mat,mat,front||mat,mat];
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mats);
+  m.position.set(x,y+h/2,z); m.castShadow=true; m.receiveShadow=true; scene.add(m); return m;}
+function roundBox(w,h,d,r,mat,x,y,z){
+  const s=new THREE.Shape(),a=w/2-r,b=d/2-r;
+  s.moveTo(-a,-d/2);s.lineTo(a,-d/2);s.quadraticCurveTo(w/2,-d/2,w/2,-b);s.lineTo(w/2,b);s.quadraticCurveTo(w/2,d/2,a,d/2);
+  s.lineTo(-a,d/2);s.quadraticCurveTo(-w/2,d/2,-w/2,b);s.lineTo(-w/2,-b);s.quadraticCurveTo(-w/2,-d/2,-a,-d/2);
+  const g=new THREE.ExtrudeGeometry(s,{depth:h-1.2,bevelEnabled:true,bevelThickness:0.6,bevelSize:0.6,bevelSegments:4,curveSegments:16});
+  g.rotateX(-Math.PI/2); g.translate(0,0.6,0);
+  const m=new THREE.Mesh(g,mat); m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; scene.add(m); return m;}
+const U=4.445, Y0=10;            // 1U in cm; U1 bottom
+const uy=u=>Y0+(u-1)*U;
+const FZ=15.5;                   // front rail plane
+
+// ---------- materials ----------
+const steel=M({color:0x15171c,roughness:0.55,metalness:0.6});
+const steelDark=M({color:0x1c2027,roughness:0.6,metalness:0.5});
+const white=M({color:0xeceef1,roughness:0.45});
+const black=M({color:0x2a2d33,roughness:0.5,metalness:0.2});
+
+// ---------- floor ----------
+const floorT=tex(1024,1024,(g,w,h)=>{const r=g.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);
+  r.addColorStop(0,'rgba(60,70,88,1)');r.addColorStop(0.55,'rgba(28,34,46,0.85)');r.addColorStop(1,'rgba(11,15,23,0)');
+  g.fillStyle=r;g.fillRect(0,0,w,h);
+  g.strokeStyle='rgba(255,255,255,0.05)';g.lineWidth=3;for(let i=0;i<=w;i+=128){g.beginPath();g.moveTo(i,0);g.lineTo(i,h);g.stroke();g.beginPath();g.moveTo(0,i);g.lineTo(w,i);g.stroke();}});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(420,420),new THREE.MeshStandardMaterial({map:floorT,transparent:true,roughness:0.85}));
+floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+
+// ---------- cabinet ----------
+const CW=60,CD=45,CB=6,CH=78;      // width, depth, body bottom, body height
+const sideT=tex(512,1024,(g,w,h)=>{g.fillStyle='#16191f';g.fillRect(0,0,w,h);
+  g.fillStyle='#07080a';for(let y=90;y<260;y+=26){g.beginPath();g.roundRect(110,y,w-220,9,4);g.fill();}
+  for(let y=h-260;y<h-90;y+=26){g.beginPath();g.roundRect(110,y,w-220,9,4);g.fill();}});
+const sideM=M({map:sideT,roughness:0.55,metalness:0.55});
+box(1.2,CH,CD,[sideM,sideM,steel,steel,steel,steel],-CW/2+0.6,CB,0);
+box(1.2,CH,CD,[sideM,sideM,steel,steel,steel,steel], CW/2-0.6,CB,0);
+box(CW,CH,1,steelDark,0,CB,-CD/2+0.5);
+const topT=tex(1024,512,(g,w,h)=>{g.fillStyle='#16191f';g.fillRect(0,0,w,h);g.fillStyle='#050608';
+  for(let x=60;x<w-60;x+=22){g.fillRect(x,h-120,10,90);}});
+const topM=M({map:topT,roughness:0.5,metalness:0.55});
+box(CW,4,CD,[steel,steel,topM,steel,topM,steel],0,CB+CH-4,0,topM);
+box(CW,4,CD,steel,0,CB,0);
+// plinth + casters
+box(CW-4,2,CD-4,steelDark,0,CB-2,0);
+for(const [x,z] of [[-25,-18],[25,-18],[-25,18],[25,18]]){
+  const c=new THREE.Mesh(new THREE.CylinderGeometry(2.2,2.2,2,24),black);c.rotation.z=Math.PI/2;c.position.set(x,2.2,z);c.castShadow=true;scene.add(c);
+  box(1.6,1.8,1.6,steel,x,4,z);}
+// front rails with U numbers
+const railT=tex(64,1400,(g,w,h)=>{g.fillStyle='#b9bec6';g.fillRect(0,0,w,h);g.fillStyle='#202329';
+  for(let u=0;u<15;u++){const base=h-(u*h/15);for(let k=0;k<3;k++){g.fillRect(34,base-(k+0.5)*h/45-6,16,12);}
+    g.font='bold 20px sans-serif';g.fillText(String(u+1),4,base-h/30+8);}});
+const railM=M({map:railT,roughness:0.4,metalness:0.7});
+for(const x of [-24.6,24.6]) box(2.6,15*U,1.2,[steel,steel,steel,steel,railM,steel],x,Y0,FZ);
+for(const x of [-24.6,24.6]) box(2.6,15*U,1.2,steel,x,Y0,-14);
+
+// ---------- devices ----------
+// U15: thermostat fan panel
+box(48.3,U-0.2,22,black,0,uy(15)+0.1,FZ-11+0.6,tex(966,88,(g,w,h)=>{g.fillStyle='#26292f';g.fillRect(0,0,w,h);
+  g.fillStyle='#08090b';for(let x=30;x<w-30;x+=16){if(x>380&&x<590)continue;g.fillRect(x,14,8,h-28);}
+  g.fillStyle='#000';g.fillRect(400,14,170,60);g.fillStyle='#ff2d2d';g.font='bold 44px monospace';g.fillText('77.0°',412,62);
+  g.fillStyle='#d32f2f';g.fillRect(w-80,30,40,26);}));
+// U14: patch panel
+const ports=[11,12,14,19];
+box(48.3,U-0.2,10,black,0,uy(14)+0.1,FZ-5+0.6,tex(966,88,(g,w,h)=>{g.fillStyle='#272a30';g.fillRect(0,0,w,h);
+  g.font='11px sans-serif';
+  for(let i=0;i<24;i++){const x=70+i*35.5;g.fillStyle='#e8e8e8';g.fillRect(x,10,26,7);g.fillStyle='#050505';g.fillRect(x+2,26,22,22);
+    g.fillStyle='#bbb';g.fillText(String(i+1),x+(i<9?9:5),70);
+    if(ports.includes(i+1)){g.fillStyle='#f4f4f4';g.fillRect(x+3,27,20,20);}}
+  g.fillStyle='#9aa';g.font='bold 12px sans-serif';g.fillText('CAT.6',w-58,50);}));
+// U12-13 shelf + Pi, Beelink, switch
+const shelfY=uy(12);
+box(48.3,0.5,36,steel,0,shelfY-0.5,FZ-18);
+box(9.4,3.4,6.6,M({color:0xa9adb3,roughness:0.3,metalness:0.85}),-17.5,shelfY,FZ-7,tex(188,68,(g,w,h)=>{
+  g.fillStyle='#a9adb3';g.fillRect(0,0,w,h);g.fillStyle='#555';g.fillRect(14,22,26,22);g.fillRect(48,22,26,22);
+  g.fillStyle='#2b6bd6';g.fillRect(84,26,14,14);g.beginPath();g.fillStyle='#ddd';g.arc(150,34,16,0,7);g.fill();}));
+box(12.6,4.2,11.3,M({color:0x121317,roughness:0.35,metalness:0.4}),-5,shelfY,FZ-7,tex(252,84,(g,w,h)=>{
+  g.fillStyle='#121317';g.fillRect(0,0,w,h);g.fillStyle='#2a7de1';g.fillRect(38,34,18,10);g.fillRect(64,34,18,10);
+  g.fillStyle='#333';g.fillRect(92,36,8,8);g.beginPath();g.fillStyle='#e23b3b';g.arc(210,40,13,0,7);g.fill();}));
+const swX=12.5,swW=20;
+box(swW,3.1,10,white,swX,shelfY,FZ-6,tex(400,62,(g,w,h)=>{g.fillStyle='#eceef1';g.fillRect(0,0,w,h);
+  for(let i=0;i<8;i++){const x=18+i*45;g.fillStyle='#2d2f33';g.fillRect(x,16,34,32);g.fillStyle=i<6?'#3ddc84':'#888';g.fillRect(x+2,10,8,4);g.fillStyle='#f39c12';g.fillRect(x+24,10,8,4);}}));
+// cables patch panel -> switch
+const cableM=M({color:0xf2f2f2,roughness:0.5});
+ports.forEach((p,i)=>{const px=-24.15+ (70+(p-1)*35.5+13)/966*48.3;
+  const sx=swX-swW/2+ (18+i*45+17)/400*swW;
+  const pts=[new THREE.Vector3(px,uy(14)+2.2,FZ+1.2),new THREE.Vector3(px+1,uy(14)-1,FZ+5),new THREE.Vector3((px+sx)/2,shelfY+7,FZ+5.5-i*0.6),
+    new THREE.Vector3(sx,shelfY+4,FZ+3),new THREE.Vector3(sx,shelfY+1.6,FZ-0.8)];
+  const t=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),48,0.28,8),cableM);t.castShadow=true;scene.add(t);});
+// U5 shelf: NAS + Lenovo, Xfinity gateway and UDR7 in front, Deco behind them
+const s2=uy(5);
+box(48.3,0.5,38,steel,0,s2-0.5,FZ-19);
+const nasFront=tex(356,366,(g,w,h)=>{g.fillStyle='#1f2126';g.fillRect(0,0,w,h);
+  for(let i=0;i<4;i++){const x=22+i*80;g.fillStyle='#34373d';g.fillRect(x,22,70,268);g.fillStyle='#45484f';g.fillRect(x+6,28,58,200);
+    g.fillStyle='#16171a';g.font='bold 34px sans-serif';g.fillText('0'+(i+1),x+14,140);}
+  g.fillStyle='#9fa4ab';g.font='16px sans-serif';g.fillText('DXP4800 Plus',w/2-52,328);
+  g.fillStyle='#e9eef5';g.fillRect(24,312,26,12);g.fillStyle='#3ddc84';g.fillRect(64,316,6,6);g.fillRect(76,316,6,6);g.fillRect(88,316,6,6);});
+box(17.8,18.3,22.4,M({color:0x1f2126,roughness:0.45,metalness:0.4}),-14.5,s2,FZ-13,nasFront);
+box(17.9,3.5,18.3,M({color:0x101114,roughness:0.5,metalness:0.3}),-14.5,s2+18.3,FZ-12,tex(358,70,(g,w,h)=>{
+  g.fillStyle='#101114';g.fillRect(0,0,w,h);g.fillStyle='#1b1c20';for(let x=10;x<w-10;x+=9)g.fillRect(x,6,5,22);
+  g.fillStyle='#ddd';g.font='italic bold 15px sans-serif';g.fillText('ThinkCentre',w-110,52);g.fillStyle='#e23b3b';g.fillRect(10,40,40,16);
+  g.fillStyle='#fff';g.font='bold 11px sans-serif';g.fillText('Lenovo',12,52);g.fillStyle='#2a7de1';g.fillRect(180,44,12,8);}));
+const decoTop=tex(256,256,(g,w,h)=>{g.fillStyle='#e9e7e2';g.fillRect(0,0,w,h);g.fillStyle='#c9c6bf';
+  for(let y=14;y<h;y+=14)for(let x=14;x<w;x+=14)if(Math.hypot(x-w/2,y-h/2)<118){g.beginPath();g.arc(x,y,2.6,0,7);g.fill();}});
+// Xfinity gateway (bridge mode): rounded white tower with a tan base band
+roundBox(12,21,11,3,M({color:0xeceae4,roughness:0.55}),1.5,s2,FZ-14);
+roundBox(12.2,2.2,11.2,3,M({color:0xc9b79c,roughness:0.6}),1.5,s2,FZ-14);
+// TP-Link Deco X68 (AP mode), behind the gateway and UDR7
+roundBox(11.2,19.2,11.2,2.4,[M({map:decoTop,color:0xffffff,roughness:0.6}),M({color:0xe9e7e2,roughness:0.55})],10,s2,-10);
+// UDR7: cylinder + dome + LED ring
+const udrX=14.5,udrZ=FZ-11,udrR=5.4,udrH=13;
+const udr=new THREE.Mesh(new THREE.CylinderGeometry(udrR,udrR,udrH,48),white);udr.position.set(udrX,s2+udrH/2+0.6,udrZ);udr.castShadow=true;udr.receiveShadow=true;scene.add(udr);
+const dome=new THREE.Mesh(new THREE.SphereGeometry(udrR,48,24,0,Math.PI*2,0,Math.PI/2),white);dome.scale.y=0.9;dome.position.set(udrX,s2+udrH+0.6,udrZ);dome.castShadow=true;scene.add(dome);
+const base=new THREE.Mesh(new THREE.SphereGeometry(udrR,48,24,0,Math.PI*2,Math.PI/2,Math.PI/2),white);base.scale.y=0.12;base.position.set(udrX,s2+0.6,udrZ);scene.add(base);
+const ring=new THREE.Mesh(new THREE.TorusGeometry(udrR+0.02,0.32,12,64),new THREE.MeshStandardMaterial({color:0x3b8cff,emissive:0x2f7dff,emissiveIntensity:3}));
+ring.rotation.x=Math.PI/2;ring.position.set(udrX,s2+udrH-1.2,udrZ);scene.add(ring);
+const pill=new THREE.Mesh(new THREE.CapsuleGeometry(0.45,1.4,6,12),new THREE.MeshStandardMaterial({color:0x7fb2ff,emissive:0x2f7dff,emissiveIntensity:2}));
+pill.position.set(udrX,s2+5,udrZ+udrR+0.05);scene.add(pill);
+// U4: PDU
+const labels=[['UGREEN NAS','#3fbf5f'],['Pi-4','#f2e14a'],['Xbox','#f4f4f4'],['Mini PC','#e2463f'],['Cooling Fan','#f4f4f4'],['',''],['',''],['UniFi Switch','#f6a6a0'],['',''],['UniFi Router','#2f6fe0']];
+box(48.3,U-0.2,20,black,0,uy(4)+0.1,FZ-10+0.6,tex(966,88,(g,w,h)=>{g.fillStyle='#25282d';g.fillRect(0,0,w,h);
+  g.fillStyle='#222';g.beginPath();g.arc(48,44,14,0,7);g.fill();
+  labels.forEach(([t,c],i)=>{const x=110+i*82;const gr=g.createLinearGradient(0,8,0,48);gr.addColorStop(0,'#ff6b55');gr.addColorStop(1,'#c4160e');
+    g.fillStyle='#3a0f0c';g.fillRect(x-3,6,48,44);g.fillStyle=gr;g.fillRect(x,9,42,38);g.fillStyle='#ffd2c8';g.fillRect(x+18,14,6,10);
+    if(t){g.fillStyle=c;g.fillRect(x-14,56,70,22);g.fillStyle=c==='#2f6fe0'||c==='#e2463f'?'#fff':'#111';g.font='bold 11px sans-serif';g.fillText(t,x-12,72,66);}});}));
+// U1-2: UPS
+box(48.3,2*U-0.2,40,black,0,uy(1)+0.1,FZ-20+0.6,tex(966,176,(g,w,h)=>{g.fillStyle='#26282c';g.fillRect(0,0,w,h);
+  g.fillStyle='#101114';for(let r=0;r<6;r++)for(let c=0;c<26;c++){g.beginPath();g.ellipse(40+c*24+(r%2)*12,32+r*22,9,6,0,0,7);g.fill();}
+  g.fillStyle='#cfd3d8';g.font='bold 28px sans-serif';g.fillText('CyberPower',60,165);
+  g.fillStyle='#0b1a2a';g.fillRect(710,30,150,110);g.fillStyle='#2f9bff';g.font='bold 22px monospace';g.fillText('LOAD 18%',722,80);g.fillText('120V',742,112);
+  g.beginPath();g.fillStyle='#4aa3ff';g.arc(910,50,10,0,7);g.fill();g.fillStyle='#555';for(let i=0;i<4;i++)g.fillRect(900,74+i*20,20,10);}));
+// Xbox on top
+box(15.1,30.1,15.1,[M({color:0x111214,roughness:0.5}),M({color:0x111214}),M({color:0x0c0d0f}),black,
+  M({map:tex(302,602,(g,w,h)=>{const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,'#0d1640');gr.addColorStop(0.6,'#3b1d6e');gr.addColorStop(0.85,'#f0a07a');gr.addColorStop(1,'#20103a');
+    g.fillStyle=gr;g.fillRect(0,0,w,h);g.strokeStyle='#4fd1ff';g.lineWidth=10;g.beginPath();g.arc(w*0.55,h*0.28,90,0.2*Math.PI,1.1*Math.PI);g.stroke();
+    g.fillStyle='#fff';for(const [x,y] of [[60,400],[150,430],[230,410]]){g.beginPath();g.arc(x,y,6,0,7);g.fill();}
+    g.fillStyle='#000';g.fillRect(36,330,8,200);}),roughness:0.4}),black],
+  6,CB+CH,-2);
+
+// ---------- glass door (open) ----------
+const door=new THREE.Group();door.position.set(-CW/2,CB+2,CD/2);
+const glass=new THREE.Mesh(new THREE.BoxGeometry(CW-1,CH-4,0.4),new THREE.MeshPhysicalMaterial({color:0x8fb4d8,transparent:true,opacity:0.16,roughness:0.05,metalness:0,clearcoat:1}));
+glass.position.set((CW-1)/2,(CH-4)/2,0);door.add(glass);
+const frameM=M({color:0x101216,roughness:0.5,metalness:0.5}),blueM=new THREE.MeshStandardMaterial({color:0x1d4ed8,emissive:0x1d4ed8,emissiveIntensity:0.5});
+for(const [w,h,x,y,m] of [[4,CH-4,2,(CH-4)/2,frameM],[4,CH-4,CW-3,(CH-4)/2,frameM],[0.8,CH-8,4.4,(CH-4)/2,blueM],[0.8,CH-8,CW-5.4,(CH-4)/2,blueM]]){
+  const f=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.9),m);f.position.set(x,y,0);f.castShadow=true;door.add(f);}
+const lock=new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,1.2,20),M({color:0xb8c4d0,metalness:0.9,roughness:0.25}));lock.rotation.x=Math.PI/2;lock.position.set(CW-3,(CH-4)/2,0.8);door.add(lock);
+// door left off so the devices are visible; keep its blue edge trim on the cabinet front
+for(const x of [-CW/2+0.6,CW/2-0.6]){const t=new THREE.Mesh(new THREE.BoxGeometry(0.8,CH-6,0.6),blueM);t.position.set(x,CB+CH/2,CD/2+0.3);scene.add(t);}
+
+// ---------- lights ----------
+scene.add(new THREE.HemisphereLight(0xdfe8ff,0x2a2e38,2.0));
+const key=new THREE.DirectionalLight(0xffffff,2.6);key.position.set(70,180,260);key.castShadow=true;
+key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-120,right:120,top:140,bottom:-40,near:10,far:600});key.shadow.bias=-0.0004;scene.add(key);
+const fill=new THREE.DirectionalLight(0xa9c3ff,0.8);fill.position.set(-200,80,120);scene.add(fill);
+const inner=new THREE.PointLight(0xe6efff,5200,140,2);inner.position.set(4,60,48);scene.add(inner);
+const inner2=new THREE.PointLight(0xe6efff,3800,140,2);inner2.position.set(-4,22,50);scene.add(inner2);
+const front=new THREE.DirectionalLight(0xffffff,1.3);front.position.set(120,105,225);scene.add(front);
+const blue=new THREE.PointLight(0x3b82f6,600,60,2);blue.position.set(14,40,22);scene.add(blue);
+const rim=new THREE.DirectionalLight(0x6f8fff,1.2);rim.position.set(-60,140,-220);scene.add(rim);
+
+renderer.render(scene,camera);
+
+// ---------- callouts ----------
+const svg=document.getElementById('o'),NS='http://www.w3.org/2000/svg';
+function el(t,a,txt){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt)e.textContent=txt;svg.appendChild(e);return e;}
+function scr(x,y,z){const v=new THREE.Vector3(x,y,z).project(camera);return [(v.x+1)/2*W,(1-v.y)/2*H];}
+el('text',{x:48,y:62,class:'h1'},'Homelab Rack · 15U');
+el('text',{x:48,y:88,class:'h2'},'Front view, door removed · thermostat fan · UPS-backed');
+const L=[
+ ['Thermostat fan',  'Exhausts at 77°F',               [-6,uy(15)+2.2,FZ+0.7],'l'],
+ ['24-port patch panel','Cat6 runs to the house',       [-14,uy(14)+2.2,FZ+0.7],'l'],
+ ['Raspberry Pi 4',  'Storage VLAN · .50.30 · admin',   [-17.5,shelfY+1.7,FZ-3.6],'l'],
+ ['Lenovo M80q · Proxmox VE','10.0.50.20 · i7 · 32 GB', [-14.5,s2+20,FZ-2.8],'l'],
+ ['UGREEN DXP4800 Plus','NAS · WD Red Plus · RAID 5',    [-19,s2+9,FZ-1.8],'l'],
+ ['Switched PDU',    '10 labeled outlets',              [-15,uy(4)+2.2,FZ+0.7],'l'],
+ ['CyberPower UPS',  'CP1500 · 1500VA sine wave',       [-10,uy(1)+4.4,FZ+0.7],'l'],
+ ['Xbox Series X',   'Gaming VLAN 40 · Open NAT',       [6,CB+CH+20,5.6],'r'],
+ ['Beelink SER5',    'Windows PC · Default',            [-1,shelfY+2.1,FZ-1.35],'r'],
+ ['USW-Lite-8-PoE',  'Powers both U7 Lite APs',         [17,shelfY+1.6,FZ-1],'r'],
+ ['TP-Link Deco X68 (behind)','AP mode · mesh on Default', [10,s2+19.2,-10],'r'],
+ ['Xfinity gateway','Bridge mode · no double NAT',    [1.5,s2+12,FZ-8.4],'r'],
+ ['UniFi Dream Router 7','Zone firewall · IPS · 7 VLANs',[udrX+2,s2+16,udrZ+udrR-1.5],'r'],
+];
+const lefts=L.filter(l=>l[3]==='l'),rights=L.filter(l=>l[3]==='r');
+function column(list,x0,side){const pts=list.map(l=>({l,p:scr(...l[2])})).sort((a,b)=>a.p[1]-b.p[1]);
+  const top=140,bot=H-60,step=(bot-top)/Math.max(1,pts.length-1);
+  pts.forEach((o,i)=>{const ly=top+i*step,[ax,ay]=o.p;const tx=side==='l'?x0:x0;
+    const ex=side==='l'?x0+230:x0-14;
+    const kx=side==='l'?ex+70:ex-70,jx=side==='l'?ex+20:ex-20;
+    el('path',{d:`M${ax} ${ay} L${kx} ${ay} L${jx} ${ly} L${ex} ${ly}`,stroke:'#5b8def',fill:'none','stroke-width':1.3,opacity:0.9});
+    el('circle',{cx:ax,cy:ay,r:4,fill:'#0b0f17',stroke:'#7fb2ff','stroke-width':2});
+    const anchor=side==='l'?'start':'start';
+    el('text',{x:side==='l'?x0:x0,y:ly-4,class:'t'},o.l[0]);
+    el('text',{x:side==='l'?x0:x0,y:ly+14,class:'s'},o.l[1]);
+    const ul=el('line',{x1:side==='l'?x0:x0,y1:ly+3,x2:side==='l'?x0+230:x0+230,y2:ly+3,stroke:'#2a3a55','stroke-width':1});});}
+column(lefts,40,'l'); column(rights,W-280,'r');
+window.done=true;
+</script></body></html>
